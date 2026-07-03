@@ -6,36 +6,43 @@ import logging
 from openai import OpenAI
 
 from config.settings import settings
+from src.domain.interfaces.ai_client import IAIClient
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """Você é um editor jornalístico experiente. 
-Revise o texto da notícia fornecida corrigindo gramática, ortografia e estilo, 
-mantendo o conteúdo factual intacto. Responda apenas com o texto revisado."""
 
+class OpenAIClient(IAIClient):
+    """Implementação de IAIClient usando o SDK oficial da OpenAI.
 
-class OpenAIClient:
-    """Wrapper em torno do SDK oficial da OpenAI.
-
-    Fornece um método de alto nível para revisão de texto,
-    abstraindo detalhes de autenticação e chamada à API.
+    Abstraindo detalhes de autenticação e chamada à API.
     """
 
     def __init__(self) -> None:
         self._client = OpenAI(api_key=settings.openai_api_key)
         self._model: str = settings.openai_model
 
-    def review_text(self, title: str, content: str) -> str:
-        """Envia o texto para revisão e retorna o conteúdo corrigido.
+    def complete(self, system_prompt: str, user_message: str) -> str:
+        """Envia um par de mensagens ao modelo e retorna o texto gerado.
 
         Args:
-            title: Título da notícia.
-            content: Corpo da notícia original.
+            system_prompt: Instrução de comportamento (role=system).
+            user_message: Conteúdo do usuário (role=user).
 
         Returns:
-            Texto revisado retornado pelo modelo.
+            Texto de resposta gerado pelo modelo.
 
         Raises:
             RuntimeError: Se a chamada à API falhar.
         """
-        ...
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+            )
+            return response.choices[0].message.content or ""
+        except Exception as exc:
+            logger.exception("Falha na chamada à API da OpenAI.")
+            raise RuntimeError("Erro ao comunicar com a API da OpenAI.") from exc
