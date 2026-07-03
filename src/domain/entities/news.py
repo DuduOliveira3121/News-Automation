@@ -43,12 +43,16 @@ class News:
 
     def mark_as_reviewed(self, reviewed_content: str) -> None:
         """Transiciona para o estado REVIEWED com o conteúdo revisado."""
-        ...
+        self.reviewed_content = reviewed_content
+        self.status = NewsStatus.REVIEWED
+        self.updated_at = datetime.utcnow()
 
     def mark_as_published(self) -> None:
         """Transiciona para o estado PUBLISHED."""
-        ...
+        self.status = NewsStatus.PUBLISHED
+        self.updated_at = datetime.utcnow()
 
     def mark_as_failed(self) -> None:
         """Transiciona para o estado FAILED."""
-        ...
+        self.status = NewsStatus.FAILED
+        self.updated_at = datetime.utcnow()

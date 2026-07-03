@@ -39,5 +39,27 @@ class ParseDocxUseCase:
 
         Returns:
             Lista de entidades News salvas no repositório.
+
+        Raises:
+            FileNotFoundError: Se o arquivo não existir.
+            ValueError: Se o arquivo for inválido ou não contiver notícias.
         """
-        ...
+        logger.info("Iniciando extração de notícias de '%s'.", file_path.name)
+
+        parsed: List[ParsedNewsDTO] = self._docx_service.extract_news(file_path)
+
+        saved: List[News] = []
+        for dto in parsed:
+            news = News(
+                title=dto.title,
+                content=dto.content,
+                source_file=dto.source_file,
+            )
+            saved.append(self._news_repository.save(news))
+
+        logger.info(
+            "%d notícia(s) salva(s) a partir de '%s'.",
+            len(saved),
+            file_path.name,
+        )
+        return saved
