@@ -51,9 +51,13 @@ class ParseDocxUseCase:
         saved: List[News] = []
         for dto in parsed:
             news = News(
-                title=dto.title,
-                content=dto.content,
+                titulo=dto.titulo,
+                conteudo=dto.conteudo,
                 source_file=dto.source_file,
+                resumo=dto.resumo,
+                categoria=dto.categoria,
+                imagem=dto.imagem,
+                texto_alternativo=dto.texto_alternativo,
             )
             saved.append(self._news_repository.save(news))
 

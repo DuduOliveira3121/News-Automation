@@ -20,8 +20,12 @@ class NewsModel(Base):
     __tablename__ = "news"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    title: Mapped[str] = mapped_column(String(512), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    titulo: Mapped[str] = mapped_column(String(512), nullable=False)
+    resumo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    conteudo: Mapped[str] = mapped_column(Text, nullable=False)
+    categoria: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    imagem: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    texto_alternativo: Mapped[str | None] = mapped_column(String(512), nullable=True)
     source_file: Mapped[str] = mapped_column(String(512), nullable=False)
     status: Mapped[NewsStatus] = mapped_column(
         Enum(NewsStatus), nullable=False, default=NewsStatus.PENDING

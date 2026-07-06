@@ -12,10 +12,14 @@ class NewsDTO:
     """Transfere dados de uma notícia sem expor a entidade de domínio."""
 
     id: str
-    title: str
-    content: str
+    titulo: str
+    conteudo: str
     source_file: str
     status: NewsStatus
+    resumo: Optional[str] = None
+    categoria: Optional[str] = None
+    imagem: Optional[str] = None
+    texto_alternativo: Optional[str] = None
     reviewed_content: Optional[str] = None
 
 
@@ -23,9 +27,13 @@ class NewsDTO:
 class ParsedNewsDTO:
     """Representa uma notícia extraída do .docx antes de ser salva."""
 
-    title: str
-    content: str
+    titulo: str
+    conteudo: str
     source_file: str
+    resumo: Optional[str] = None
+    categoria: Optional[str] = None
+    imagem: Optional[str] = None
+    texto_alternativo: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -33,8 +41,8 @@ class ReviewRequestDTO:
     """Dados enviados ao serviço de IA para revisão."""
 
     news_id: str
-    title: str
-    content: str
+    titulo: str
+    conteudo: str
 
 
 @dataclass(frozen=True)
@@ -50,5 +58,5 @@ class PublishRequestDTO:
     """Dados necessários para disparar a publicação no portal."""
 
     news_id: str
-    title: str
-    content: str
+    titulo: str
+    conteudo: str

@@ -23,19 +23,27 @@ class News:
 
     Atributos:
         id: Identificador único (UUID v4).
-        title: Título da notícia.
-        content: Conteúdo original extraído do .docx.
+        titulo: Título da notícia.
+        conteudo: Conteúdo original extraído do .docx.
         source_file: Nome do arquivo de origem.
+        resumo: Resumo da notícia (opcional).
+        categoria: Categoria da notícia (opcional).
+        imagem: Caminho ou URL da imagem de capa (opcional).
+        texto_alternativo: Texto alternativo da imagem (opcional).
         status: Estado atual no ciclo de vida.
         reviewed_content: Conteúdo após revisão pela IA (opcional).
         created_at: Data/hora de criação.
         updated_at: Data/hora da última atualização.
     """
 
-    title: str
-    content: str
+    titulo: str
+    conteudo: str
     source_file: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    resumo: Optional[str] = field(default=None)
+    categoria: Optional[str] = field(default=None)
+    imagem: Optional[str] = field(default=None)
+    texto_alternativo: Optional[str] = field(default=None)
     status: NewsStatus = field(default=NewsStatus.PENDING)
     reviewed_content: Optional[str] = field(default=None)
     created_at: datetime = field(default_factory=datetime.utcnow)
