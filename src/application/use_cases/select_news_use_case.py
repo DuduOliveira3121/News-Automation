@@ -30,4 +30,19 @@ class SelectNewsUseCase:
         Returns:
             NewsDTO com os dados da notícia, ou None se não encontrada.
         """
-        ...
+        news = self._news_repository.find_by_id(news_id)
+        if news is None:
+            logger.debug("Notícia não encontrada: id=%s", news_id)
+            return None
+        return NewsDTO(
+            id=news.id,
+            titulo=news.titulo,
+            conteudo=news.conteudo,
+            source_file=news.source_file,
+            status=news.status,
+            resumo=news.resumo,
+            categoria=news.categoria,
+            imagem=news.imagem,
+            texto_alternativo=news.texto_alternativo,
+            reviewed_content=news.reviewed_content,
+        )

@@ -41,12 +41,14 @@ class Publication:
 
     def mark_in_progress(self) -> None:
         """Transiciona para IN_PROGRESS."""
-        ...
+        self.status = PublicationStatus.IN_PROGRESS
 
     def mark_success(self) -> None:
         """Transiciona para SUCCESS registrando o timestamp."""
-        ...
+        self.status = PublicationStatus.SUCCESS
+        self.published_at = datetime.utcnow()
 
     def mark_failed(self, reason: str) -> None:
         """Transiciona para FAILED com a mensagem de erro."""
-        ...
+        self.status = PublicationStatus.FAILED
+        self.error_message = reason

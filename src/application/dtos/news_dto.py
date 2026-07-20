@@ -51,6 +51,9 @@ class ReviewResultDTO:
 
     news_id: str
     reviewed_content: str
+    titulo: Optional[str] = None
+    resumo: Optional[str] = None
+    texto_alternativo: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -60,3 +63,6 @@ class PublishRequestDTO:
     news_id: str
     titulo: str
     conteudo: str
+    reviewed_content: Optional[str] = None
+    categoria: Optional[str] = None
+    imagem: Optional[str] = None

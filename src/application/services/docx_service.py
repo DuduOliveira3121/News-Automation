@@ -62,8 +62,8 @@ class DocxService:
 
         return [
             ParsedNewsDTO(
-                title=n.titulo,
-                content=n.corpo,
+                titulo=n.titulo,
+                conteudo=n.corpo,
                 source_file=n.arquivo_origem,
             )
             for n in noticias

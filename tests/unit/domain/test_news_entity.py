@@ -12,7 +12,7 @@ from src.domain.entities.news import News, NewsStatus
 
 def _make_news(**kwargs) -> News:
     """Cria uma instância de News com valores padrão substituíveis."""
-    defaults = {"title": "Título de Teste", "content": "Conteúdo.", "source_file": "boletim.docx"}
+    defaults = {"titulo": "Título de Teste", "conteudo": "Conteúdo.", "source_file": "boletim.docx"}
     return News(**{**defaults, **kwargs})
 
 
@@ -44,10 +44,10 @@ class TestNewsDefaults:
         assert news.reviewed_content is None
 
     def test_title_content_source_file_are_set(self) -> None:
-        news = _make_news(title="T", content="C", source_file="f.docx")
+        news = _make_news(titulo="T", conteudo="C", source_file="f.docx")
 
-        assert news.title == "T"
-        assert news.content == "C"
+        assert news.titulo == "T"
+        assert news.conteudo == "C"
         assert news.source_file == "f.docx"
 
     def test_created_at_is_datetime(self) -> None:
