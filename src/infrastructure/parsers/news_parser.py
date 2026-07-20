@@ -1,53 +1,57 @@
-"""Parser de documentos Word (.docx) para extração de notícias.
+﻿"""Parser de documentos Word (.docx) para extração de notícias.
 
-Premissas adotadas sobre a estrutura do documento
-==================================================
+Estratégia de detecção — baseada em heurísticas
+================================================
 
-1. **Separador de notícia — Heading 1**
-   Cada notícia começa obrigatoriamente com um parágrafo cujo estilo Word é
-   "Heading 1" (PT: "Título 1").  O texto desse parágrafo é usado como título
-   da notícia.  Qualquer conteúdo que apareça antes do primeiro "Heading 1"
-   é ignorado silenciosamente.
+O parser percorre todos os parágrafos e identifica títulos de notícias
+sem depender dos estilos Word (Heading 1, etc.).  As regras aplicadas são:
 
-2. **Corpo da notícia**
-   Todos os parágrafos com estilo diferente de "Heading 1" que vêm após o
-   título pertencem ao corpo daquela notícia.  O corpo se encerra quando um
-   novo "Heading 1" ou o fim do documento é encontrado.
+1. **Ignorar capa**
+   Tudo que aparece antes do primeiro marcador de bloco
+   ("1º BLOCO", "2º BLOCO" etc.) é descartado como conteúdo de capa.
+   Se o documento não contiver nenhum marcador de bloco, nenhum conteúdo
+   é descartado (o documento inteiro é processado).
 
-3. **Sub-títulos (Heading 2, Heading 3 …)**
-   Tratados como parágrafos comuns do corpo — não iniciam uma nova notícia.
+2. **Ignorar linhas vazias**
+   Parágrafos cujo texto seja vazio (ou apenas espaços em branco) são
+   ignorados tanto na detecção de títulos quanto no corpo das notícias.
 
-4. **Parágrafos vazios**
-   Parágrafos sem texto visível são ignorados tanto no título quanto no corpo.
-   Isso evita que quebras de página ou linhas em branco gerem artefatos.
+3. **Ignorar marcadores de bloco**
+   Parágrafos que correspondam ao padrão ``Nº BLOCO`` (ex.:
+   ``"1º BLOCO – EVOLUÇÃO"``, ``"2º BLOCO -  FASTBRAILLE"``) são
+   descartados e marcam o fim da capa.
 
-5. **Tabelas**
-   Quando uma tabela aparece dentro do corpo de uma notícia, o texto de cada
-   célula é extraído.  Células da mesma linha são separadas por ``\\t``; linhas
-   são separadas por ``\\n``.  O bloco de texto resultante é inserido no corpo
-   como se fosse um parágrafo normal.
+4. **Ignorar títulos de seção curtos**
+   Parágrafos em caixa alta com menos de :data:`_MIN_TITLE_WORDS` palavras
+   são tratados como títulos de seção e **não** iniciam uma nova notícia.
+   Eles são incluídos no corpo da notícia corrente (se houver).
 
-6. **Concatenação do corpo**
-   Os blocos de texto (parágrafos e tabelas) são unidos com ``\\n\\n``.
+5. **Detectar título de notícia**
+   Um parágrafo é considerado título quando:
 
-7. **Encoding**
-   A biblioteca *python-docx* retorna strings Unicode nativas.  Nenhum
-   tratamento adicional de encoding é realizado.
+   * Todos os seus caracteres alfabéticos são maiúsculos (caixa alta).
+   * Possui pelo menos :data:`_MIN_TITLE_WORDS` palavras.
+   * Não corresponde ao padrão de marcador de bloco.
 
-8. **Metadados do documento**
-   Propriedades como autor, data de criação e número de revisão não são
-   extraídas — somente título e corpo de cada notícia.
+6. **Corpo da notícia**
+   Todo parágrafo (não vazio, não marcador de bloco) que surge após um
+   título pertence ao corpo daquela notícia, até que outro título seja
+   encontrado ou o documento se encerre.
 
-9. **Estilos localizados**
-   Para cobrir instalações do Word em português, espanhol e francês, os nomes
-   "Título 1", "Titulo 1" e "Rubrique 1" são aceitos como equivalentes a
-   "Heading 1".  Outros idiomas podem ser adicionados em ``_HEADING1_STYLE_NAMES``.
+7. **Tabelas**
+   Tabelas encontradas após um título são convertidas para texto plano e
+   incluídas no corpo.  Células da mesma linha são separadas por ``\t``;
+   linhas, por ``\n``.
+
+8. **Posição**
+   Cada notícia registra o índice (base 0) do parágrafo de título na
+   sequência de blocos do documento (:attr:`Noticia.posicao_inicial`) e o
+   índice do último bloco de conteúdo pertencente a ela
+   (:attr:`Noticia.posicao_final`).
 
 Comportamento em caso de desvio das premissas
 ---------------------------------------------
-- **Nenhum "Heading 1" no documento** → retorna lista vazia e emite aviso
-  no log.
-- **"Heading 1" com texto vazio** → o item é ignorado e um aviso é emitido.
+- **Nenhum título detectado** → retorna lista vazia e emite aviso no log.
 - **Arquivo inexistente** → ``FileNotFoundError``.
 - **Extensão diferente de .docx** → ``ValueError``.
 - **Arquivo corrompido / ilegível** → ``ValueError``.
@@ -56,6 +60,7 @@ Comportamento em caso de desvio das premissas
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Generator, List, Union
@@ -72,17 +77,12 @@ logger = logging.getLogger(__name__)
 # Constantes internas
 # ---------------------------------------------------------------------------
 
-#: Nomes de estilo que identificam o início de uma nova notícia.
-#: Comparação feita em lowercase para evitar problemas de capitalização.
-_HEADING1_STYLE_NAMES: frozenset[str] = frozenset(
-    {
-        "heading 1",   # inglês (padrão)
-        "título 1",    # português (com acento)
-        "titulo 1",    # português (sem acento)
-        "rubrique 1",  # francês
-        "título1",     # variação sem espaço
-    }
-)
+#: Padrão que identifica marcadores de bloco: "1º BLOCO", "2º BLOCO", etc.
+_BLOCO_RE = re.compile(r"^\d+[ºª°]\s*BLOCO", re.IGNORECASE)
+
+#: Número mínimo de palavras para que um parágrafo em caixa alta seja
+#: considerado um título de notícia (e não um título de seção).
+_MIN_TITLE_WORDS: int = 5
 
 #: Tags XML qualificadas usadas na iteração do body do documento.
 _TAG_PARAGRAPH = qn("w:p")
@@ -98,26 +98,24 @@ _TAG_TABLE = qn("w:tbl")
 class Noticia:
     """Representa uma notícia extraída de um documento Word.
 
-    Esta dataclass é o contrato de saída do :class:`NewsParser`.  Camadas
-    superiores (serviços, use-cases) podem mapeá-la para suas próprias
-    estruturas de dados conforme necessário.
-
     Atributos:
-        titulo: Texto do parágrafo "Heading 1" que abre a notícia.
-            Nunca é vazio — itens com título vazio são descartados pelo parser.
-        corpo: Texto concatenado dos parágrafos e tabelas que formam o corpo
-            da notícia.  Blocos separados por ``\\n\\n``.  Pode ser vazio se
-            o "Heading 1" não for seguido de nenhum conteúdo.
-        arquivo_origem: Nome do arquivo .docx (sem caminho completo) de onde
-            a notícia foi extraída.
+        titulo: Texto do parágrafo de título (caixa alta, >= 5 palavras).
+        corpo: Texto concatenado dos parágrafos que formam o corpo da notícia.
+            Blocos separados por ``\n\n``.  Pode ser vazio.
+        arquivo_origem: Nome do arquivo ``.docx`` de origem (sem caminho).
         indice: Posição ordinal da notícia no documento, base 1.
-            Útil para depuração e rastreabilidade.
+        posicao_inicial: Índice (base 0) do bloco de título na sequência de
+            blocos do documento.
+        posicao_final: Índice (base 0) do último bloco de conteúdo da
+            notícia na sequência de blocos do documento.
     """
 
     titulo: str
     corpo: str
     arquivo_origem: str
     indice: int = field(default=0)
+    posicao_inicial: int = field(default=0)
+    posicao_final: int = field(default=0)
 
 
 # ---------------------------------------------------------------------------
@@ -125,22 +123,40 @@ class Noticia:
 # ---------------------------------------------------------------------------
 
 
-def _is_heading1(paragraph: Paragraph) -> bool:
-    """Retorna ``True`` se *paragraph* tiver estilo "Heading 1" (qualquer idioma)."""
-    return paragraph.style.name.lower() in _HEADING1_STYLE_NAMES
+def _is_bloco_marker(text: str) -> bool:
+    """Retorna True se *text* for um marcador de bloco (``Nº BLOCO …``)."""
+    return bool(_BLOCO_RE.match(text))
 
 
-def _clean_text(paragraph: Paragraph) -> str:
-    """Retorna o texto do parágrafo sem espaços nas extremidades."""
-    return paragraph.text.strip()
+def _is_all_upper(text: str) -> bool:
+    """Retorna True se todos os caracteres alfabéticos de *text* forem maiúsculos."""
+    letters = [c for c in text if c.isalpha()]
+    return len(letters) > 0 and all(c.isupper() for c in letters)
+
+
+def _is_title_candidate(text: str) -> bool:
+    """Retorna True se *text* satisfizer as heurísticas de título de notícia.
+
+    Um texto é candidato a título quando:
+    * Não é vazio.
+    * Não é marcador de bloco.
+    * Todos os seus caracteres alfabéticos são maiúsculos (caixa alta).
+    * Possui pelo menos :data:`_MIN_TITLE_WORDS` palavras.
+    """
+    if not text:
+        return False
+    if _is_bloco_marker(text):
+        return False
+    if not _is_all_upper(text):
+        return False
+    return len(text.split()) >= _MIN_TITLE_WORDS
 
 
 def _table_to_text(table: Table) -> str:
     """Converte uma tabela Word em texto plano.
 
-    Cada linha da tabela vira uma linha de texto; células são separadas por
-    tabulação.  Células mescladas repetem o conteúdo para cada coluna lógica
-    ocupada (comportamento padrão do python-docx).
+    Células da mesma linha são separadas por ``\t``; linhas, por ``\n``.
+    Linhas completamente vazias são omitidas.
     """
     rows: list[str] = []
     for row in table.rows:
@@ -154,16 +170,13 @@ def _table_to_text(table: Table) -> str:
 def _iter_block_items(
     document: Document,
 ) -> Generator[Union[Paragraph, Table], None, None]:
-    """Itera os elementos de bloco do documento na ordem em que aparecem.
+    """Itera os elementos de bloco do documento na ordem de aparecimento.
 
-    python-docx expõe ``document.paragraphs`` e ``document.tables``
-    separadamente, o que perde a ordenação relativa entre parágrafos e
-    tabelas.  Esta função percorre diretamente o XML do ``<w:body>`` para
-    preservar a ordem correta.
+    Percorre diretamente o XML do ``<w:body>`` para preservar a ordem
+    relativa entre parágrafos e tabelas.
 
     Yields:
-        Instâncias de :class:`~docx.text.paragraph.Paragraph` ou
-        :class:`~docx.table.Table`.
+        Instâncias de Paragraph ou Table.
     """
     for child in document.element.body:
         if child.tag == _TAG_PARAGRAPH:
@@ -178,10 +191,12 @@ def _iter_block_items(
 
 
 class NewsParser:
-    """Extrai notícias de documentos Word (.docx).
+    """Extrai notícias de documentos Word (.docx) usando heurísticas.
 
-    O parser não mantém estado entre chamadas; a mesma instância pode ser
-    reutilizada para múltiplos arquivos.
+    Nao depende de estilos Word.  A detecção de títulos é feita com base
+    no texto em caixa alta e no número de palavras.
+
+    A mesma instância pode ser reutilizada para múltiplos arquivos.
 
     Exemplo de uso::
 
@@ -191,23 +206,21 @@ class NewsParser:
         parser = NewsParser()
         noticias = parser.parse(Path("boletim.docx"))
         for n in noticias:
-            print(f"[{n.indice}] {n.titulo}")
-            print(n.corpo)
+            print(f"[{n.indice}] {n.titulo} (paras {n.posicao_inicial}–{n.posicao_final})")
     """
 
     def parse(self, file_path: Path) -> List[Noticia]:
         """Lê o documento e retorna uma lista ordenada de notícias.
 
         Args:
-            file_path: Caminho absoluto (ou relativo ao CWD) para o arquivo
-                ``.docx``.
+            file_path: Caminho para o arquivo ``.docx``.
 
         Returns:
-            Lista de :class:`Noticia` em ordem de aparecimento no documento.
-            Retorna lista vazia se nenhum "Heading 1" for encontrado.
+            Lista de Noticia em ordem de aparecimento no documento.
+            Retorna lista vazia se nenhum título for detectado.
 
         Raises:
-            FileNotFoundError: Se *file_path* não existir no sistema de arquivos.
+            FileNotFoundError: Se *file_path* não existir.
             ValueError: Se a extensão não for ``.docx`` ou o arquivo estiver
                 corrompido / ilegível.
         """
@@ -216,8 +229,7 @@ class NewsParser:
         return self._extract(document, source_name=file_path.name)
 
     # ------------------------------------------------------------------
-    # Métodos auxiliares (podem ser sobrescritos em subclasses para
-    # customizar o comportamento sem alterar o fluxo principal)
+    # Métodos auxiliares
     # ------------------------------------------------------------------
 
     def _validate(self, file_path: Path) -> None:
@@ -238,8 +250,7 @@ class NewsParser:
         """Abre o arquivo .docx via python-docx.
 
         Raises:
-            ValueError: Se o arquivo não puder ser aberto (corrompido, acesso
-                negado, etc.).
+            ValueError: Se o arquivo não puder ser aberto.
         """
         try:
             return docx.Document(str(file_path))
@@ -249,24 +260,41 @@ class NewsParser:
             ) from exc
 
     def _extract(self, document: Document, source_name: str) -> List[Noticia]:
-        """Percorre os elementos do documento e agrupa por notícia.
+        """Percorre os blocos do documento e agrupa por notícia.
+
+        Aplica as heurísticas para detectar títulos e delimitar o corpo de
+        cada notícia.
+
+        A capa (tudo antes do primeiro marcador de bloco) é ignorada quando
+        o documento contém pelo menos um marcador de bloco.  Documentos sem
+        marcador de bloco são processados integralmente.
 
         Args:
             document: Documento Word já aberto.
-            source_name: Nome do arquivo de origem (para preencher
-                :attr:`Noticia.arquivo_origem`).
+            source_name: Nome do arquivo de origem.
 
         Returns:
-            Lista de :class:`Noticia`.
+            Lista de Noticia.
         """
+        items: list[Union[Paragraph, Table]] = list(_iter_block_items(document))
+
+        # Se o documento tem marcador de bloco, o início é considerado capa.
+        has_bloco = any(
+            isinstance(item, Paragraph) and _is_bloco_marker(item.text.strip())
+            for item in items
+        )
+        past_cover: bool = not has_bloco
+
         noticias: List[Noticia] = []
         current_title: str | None = None
+        current_start: int = 0
+        last_pos: int = 0
         body_parts: List[str] = []
-        index = 0
+        index: int = 0
 
-        def flush() -> None:
-            """Finaliza a notícia corrente e a adiciona à lista."""
-            nonlocal index, current_title, body_parts
+        def flush(end_pos: int) -> None:
+            """Fecha a notícia corrente e a adiciona à lista."""
+            nonlocal index, current_title, body_parts, current_start
             if current_title is None:
                 return
             index += 1
@@ -277,46 +305,58 @@ class NewsParser:
                     corpo=corpo,
                     arquivo_origem=source_name,
                     indice=index,
+                    posicao_inicial=current_start,
+                    posicao_final=end_pos,
                 )
             )
             current_title = None
             body_parts = []
 
-        for block in _iter_block_items(document):
+        for pos, block in enumerate(items):
             if isinstance(block, Paragraph):
-                if _is_heading1(block):
-                    # Finaliza a notícia anterior (se houver) antes de abrir a nova.
-                    flush()
-                    title_text = _clean_text(block)
-                    if not title_text:
-                        logger.warning(
-                            "Heading 1 vazio encontrado em '%s' — ignorado.",
-                            source_name,
-                        )
-                    else:
-                        current_title = title_text
-                else:
-                    # Parágrafo de corpo: só processa se já tivermos um título aberto.
-                    if current_title is not None:
-                        text = _clean_text(block)
-                        if text:
-                            body_parts.append(text)
+                text = block.text.strip()
+
+                # Ignora linhas vazias.
+                if not text:
+                    continue
+
+                # Marcador de bloco: sinaliza fim da capa e é descartado.
+                if _is_bloco_marker(text):
+                    past_cover = True
+                    continue
+
+                # Enquanto na capa, descarta tudo.
+                if not past_cover:
+                    continue
+
+                if _is_title_candidate(text):
+                    # Novo título: fecha a notícia anterior (se houver).
+                    flush(last_pos)
+                    current_title = text
+                    current_start = pos
+                    last_pos = pos
+                elif current_title is not None:
+                    # Parágrafo de corpo.
+                    body_parts.append(text)
+                    last_pos = pos
 
             elif isinstance(block, Table):
-                # Tabela: inclui no corpo da notícia corrente, se houver.
-                if current_title is not None:
+                if current_title is not None and past_cover:
                     table_text = _table_to_text(block)
                     if table_text.strip():
                         body_parts.append(table_text)
+                        last_pos = pos
 
         # Salva a última notícia ainda aberta.
-        flush()
+        flush(last_pos)
 
         if not noticias:
             logger.warning(
                 "Nenhuma notícia encontrada em '%s'. "
-                "Verifique se o documento possui parágrafos com estilo 'Heading 1'.",
+                "Verifique se o documento contém títulos em caixa alta com "
+                "pelo menos %d palavras.",
                 source_name,
+                _MIN_TITLE_WORDS,
             )
         else:
             logger.info(
